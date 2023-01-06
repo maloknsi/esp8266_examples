@@ -6,10 +6,10 @@
 #include <Adafruit_ADS1X15.h>
 #include "ACS712.h"
 #include "Fonts/FreeSerifBold12pt7b.h"
-#include "TimerInterrupt_Generic.h"
 #include <ESP8266WiFi.h>
 #include <ESPAsyncTCP.h>
 #include <ESPAsyncWebServer.h>
+#include <Ticker.h>  //Ticker Library
 
 //  Arduino UNO has 5.0 volt with a max ADC value of 1023 steps
 //  ACS712 5A  uses 185 mV per A
@@ -33,7 +33,7 @@ Adafruit_ADS1115 ads;  /* Use this for the 16-bit version */
 // Replace with your version if necessary
 ACS712 sensor(ACS712_30A, A0);
 AsyncWebServer server(80);
-RPI_PICO_Timer ITimer1(1);
+Ticker timer1;
 
 #define NUMFLAKES     10 // Number of snowflakes in the animation example
 
@@ -41,6 +41,7 @@ RPI_PICO_Timer ITimer1(1);
 #define LOGO_WIDTH    16
 
 float d_volts, d_amps, d_wats, d_amp_hours, d_wat_hours, d_volts_s1,d_volts_s2,d_volts_s3;
+uint32_t d_seconds;
 
 const char* ssid = "Tenda_B01928";
 const char* password = "22071982";
@@ -60,9 +61,15 @@ void notFound(AsyncWebServerRequest *request) {
     request->send(404, "text/plain", "Not found");
 }
 
-bool TimerHandler1(struct repeating_timer *t)
+String IntToString(int counter){
+    return (counter < 10 ? "0" : "") + String(counter);
+}
+
+void TimerHandler1()
 {
-    return true;
+    d_seconds++;
+    d_amp_hours = d_amp_hours + d_amps / 3600;
+    d_wat_hours = d_wat_hours + (d_amps * d_volts) / 3600;
 }
 
 void showDataOnDisplay() {
@@ -81,12 +88,21 @@ void showDataOnDisplay() {
     display.setFont();
     display.setTextSize(1);
     display.setCursor(80, 0);
-    display.println(String(d_amp_hours,2)+"ah");
+    display.println(String(d_amp_hours,3)+"ah");
     display.setCursor(80, 10);
-    display.println(String(d_wat_hours,2)+"wh");
+    display.println(String(d_wat_hours,3)+"wh");
+    // show time
     display.setCursor(80, 20);
-    display.println("00:00:00");
+    uint16_t h,m,s;
+    uint32_t t = d_seconds;
+    s = t % 60;
+    t = (t - s)/60;
+    m = t % 60;
+    t = (t - m)/60;
+    h = t;
+    display.println(IntToString(h)+":"+IntToString(m)+":"+IntToString(s));
 
+    // show s1,s2,s3 volts
     display.setCursor(80, 35);
     display.println("s1 " + String(d_volts_s1,2));
     display.setCursor(80, 45);
@@ -209,14 +225,10 @@ void setup() {
     Serial.println("Done!");
     Serial.println("Zero point for this sensor = " + zero);
 
-    // Interval in microsecs
-    if (ITimer1.attachInterruptInterval(TIMER1_INTERVAL_MS * 1000, TimerHandler1))
-    {
-        Serial.print(F("Starting ITimer1 OK, millis() = "));
-        Serial.println(millis());
-    }
-    else
-        Serial.println(F("Can't set ITimer1. Select another freq. or timer"));
+    //Initialize Ticker every 0.5s
+    d_seconds = 1;
+    d_amp_hours = d_wat_hours = 0;
+    timer1.attach(1, TimerHandler1); //Use attach_ms if you need time in ms
 }
 
 void loop() {
@@ -270,7 +282,6 @@ void loop() {
     d_volts_s3 = volts2;
     d_amps = I;
     d_wats = d_amps * d_volts;
-    d_amp_hours = d_wat_hours = 12.34;
     showDataOnDisplay();
     // Wait a second before the new measurement
     delay(1000);
