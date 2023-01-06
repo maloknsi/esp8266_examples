@@ -6,13 +6,9 @@
 #include <Adafruit_ADS1X15.h>
 #include "ACS712.h"
 #include "Fonts/FreeSerifBold12pt7b.h"
-#ifdef ESP32
-#include <WiFi.h>
-#include <AsyncTCP.h>
-#elif defined(ESP8266)
+#include "TimerInterrupt_Generic.h"
 #include <ESP8266WiFi.h>
 #include <ESPAsyncTCP.h>
-#endif
 #include <ESPAsyncWebServer.h>
 
 //  Arduino UNO has 5.0 volt with a max ADC value of 1023 steps
@@ -27,21 +23,24 @@
 #define OLED_CS     16
 #define OLED_RESET  2
 
+#define TIMER1_INTERVAL_MS        20
+#define DEBOUNCING_INTERVAL_MS    100
+#define LONG_PRESS_INTERVAL_MS    5000
+
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &SPI, OLED_DC, OLED_RESET, OLED_CS);
 Adafruit_ADS1115 ads;  /* Use this for the 16-bit version */
 // We have 30 amps version sensor connected to A0 pin of arduino
 // Replace with your version if necessary
 ACS712 sensor(ACS712_30A, A0);
-
+AsyncWebServer server(80);
+RPI_PICO_Timer ITimer1(1);
 
 #define NUMFLAKES     10 // Number of snowflakes in the animation example
 
 #define LOGO_HEIGHT   16
 #define LOGO_WIDTH    16
 
-float d_volts, d_amps, d_wats, d_amp_hours, d_wat_hours;
-
-AsyncWebServer server(80);
+float d_volts, d_amps, d_wats, d_amp_hours, d_wat_hours, d_volts_s1,d_volts_s2,d_volts_s3;
 
 const char* ssid = "Tenda_B01928";
 const char* password = "22071982";
@@ -61,9 +60,54 @@ void notFound(AsyncWebServerRequest *request) {
     request->send(404, "text/plain", "Not found");
 }
 
-void testdrawchar() {
+bool TimerHandler1(struct repeating_timer *t)
+{
+    return true;
+}
+
+void showDataOnDisplay() {
     display.clearDisplay();
+    display.setFont(&FreeSerifBold12pt7b);
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setTextColor(SSD1306_WHITE);
+    display.setCursor(0, 18);
+    display.print(String(d_amps,2)+"A");
+    display.setCursor(0, 38);
+    display.print(String(d_volts,2)+"v");
+    display.setCursor(0, 62);
+    display.print(String(d_wats,2)+"w");
+
+    display.setFont();
+    display.setTextSize(1);
+    display.setCursor(80, 0);
+    display.println(String(d_amp_hours,2)+"ah");
+    display.setCursor(80, 10);
+    display.println(String(d_wat_hours,2)+"wh");
+    display.setCursor(80, 20);
+    display.println("00:00:00");
+
+    display.setCursor(80, 35);
+    display.println("s1 " + String(d_volts_s1,2));
+    display.setCursor(80, 45);
+    display.println("s2 " + String(d_volts_s2,2));
+    display.setCursor(80, 55);
+    display.println("s3 " + String(d_volts_s3,2));
+
+    display.display();
+    //display.cp437(true);         // Use full 256 char 'Code Page 437' font
+}
+
+void setup() {
+    Serial.begin(9600);
+
+    // SSD1306_SWITCHCAPVCC = generate display voltage from 3.3V internally
+    if(!display.begin(SSD1306_SWITCHCAPVCC)) {
+        Serial.println(F("SSD1306 allocation failed"));
+        for(;;); // Don't proceed, loop forever
+    }
     if (false){
+        // test fonts
         display.setFont(&FreeSerifBold12pt7b);
         display.setTextColor(SSD1306_WHITE); // Draw white text
         for(int16_t j=0; j<50; j++) {
@@ -78,47 +122,6 @@ void testdrawchar() {
         }
         return;
     }
-    display.setFont(&FreeSerifBold12pt7b);
-    display.clearDisplay();
-    display.setTextSize(1);      // Normal 1:1 pixel scale
-    display.setTextColor(SSD1306_WHITE); // Draw white text
-    display.setCursor(0, 16);     // Start at top-left corner
-    //display.setTextSize(3);
-    display.print(String(d_volts,2));
-    //display.setTextSize(2);
-    display.print("V");
-    //display.setTextSize(3);
-    display.println("");
-    display.print(String(d_amps,2));
-    //display.setTextSize(2);
-    display.print("A");
-    //display.setTextSize(3);
-    display.println("");
-    display.setFont();
-    display.setCursor(0, 52);
-    display.setTextSize(2);
-    display.println(String(d_wats,2)+"W");
-    display.display();
-    //display.cp437(true);         // Use full 256 char 'Code Page 437' font
-
-    // Not all the characters will fit on the display. This is normal.
-    // Library will draw what it can and the rest will be clipped.
-//    for(int16_t i=0; i<256; i++) {
-//        if(i == '\n') display.write(' ');
-//        else          display.write(i);
-//    }
-
-}
-
-void setup() {
-    Serial.begin(9600);
-
-    // SSD1306_SWITCHCAPVCC = generate display voltage from 3.3V internally
-    if(!display.begin(SSD1306_SWITCHCAPVCC)) {
-        Serial.println(F("SSD1306 allocation failed"));
-        for(;;); // Don't proceed, loop forever
-    }
-
     // HTML SERVER
     WiFi.mode(WIFI_STA);
     WiFi.begin(ssid, password);
@@ -197,8 +200,6 @@ void setup() {
 
     // Clear the buffer
     display.clearDisplay();
-    d_volts = d_amps = d_wats = d_amp_hours = d_wat_hours = 12.34;
-    testdrawchar();
     // calibrate() method calibrates zero point of sensor,
     // It is not necessary, but may positively affect the accuracy
     // Ensure that no current flows through the sensor at this moment
@@ -207,6 +208,15 @@ void setup() {
     int zero = sensor.calibrate();
     Serial.println("Done!");
     Serial.println("Zero point for this sensor = " + zero);
+
+    // Interval in microsecs
+    if (ITimer1.attachInterruptInterval(TIMER1_INTERVAL_MS * 1000, TimerHandler1))
+    {
+        Serial.print(F("Starting ITimer1 OK, millis() = "));
+        Serial.println(millis());
+    }
+    else
+        Serial.println(F("Can't set ITimer1. Select another freq. or timer"));
 }
 
 void loop() {
@@ -235,9 +245,7 @@ void loop() {
     // Send it to serial
     Serial.println(String("I = ") + I + " A");
 
-    // Wait a second before the new measurement
-    delay(1000);
-    //
+    // show message from WEB SERVER
     if (display_show){
         display_show = false;
         if (message_font == "1"){
@@ -255,4 +263,15 @@ void loop() {
         display.clearDisplay();
         display.display();
     }
+    // show data on display
+    d_volts = volts0;
+    d_volts_s1 = volts0;
+    d_volts_s2 = volts1;
+    d_volts_s3 = volts2;
+    d_amps = I;
+    d_wats = d_amps * d_volts;
+    d_amp_hours = d_wat_hours = 12.34;
+    showDataOnDisplay();
+    // Wait a second before the new measurement
+    delay(1000);
 }
