@@ -143,52 +143,48 @@ void setup() {
     WiFi.begin(ssid, password);
     if (WiFi.waitForConnectResult() != WL_CONNECTED) {
         Serial.printf("WiFi Failed!\n");
-        return;
+    } else {
+        Serial.print("IP Address: ");
+        Serial.println(WiFi.localIP());
+        server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
+            request->send(200, "text/html", "<form method=post><input type='submit'></form>");
+        });
+        // Send a POST request to <IP>/post with a form field message set to <message>
+        server.on("/", HTTP_POST, [](AsyncWebServerRequest *request){
+            if (request->hasParam("x", true)) {
+                message_x = request->getParam("x", true)->value();
+            }
+            if (request->hasParam("y", true)) {
+                message_y = request->getParam("y", true)->value();
+            }
+            if (request->hasParam("message_size", true)) {
+                message_size = request->getParam("message_size", true)->value();
+            }
+            if (request->hasParam("message_font", true)) {
+                message_font = request->getParam("message_font", true)->value();
+            }
+            if (request->hasParam("message_text", true)) {
+                message_text = request->getParam("message_text", true)->value();
+            }
+            if (request->hasParam("clear", true) && request->getParam("clear", true)->value()) {
+                display_clear = true;
+            }
+            if (request->hasParam("show", true) && request->getParam("show", true)->value()) {
+                display_show = true;
+            }
+            message = "<form method=post><label>X</label><input name='x' value='"+message_x+"'/>"
+                      +"<br><label>Y</label><input name='y' value='"+message_y+"'/>"
+                      +"<br><label>size</label><input name='message_size' value='"+message_size+"'/><br>"
+                      +"<br><label>font</label><input name='message_font' value='"+message_font+"'/><br>"
+                      +"<br><label>text</label><input name='message_text' value='"+message_text+"'/>"
+                      +"<br><input type='submit' name='clear' value='clear'/>"
+                      +"<input type='submit' name='show' value='show'/><br><input type='submit'/></form><br>DShow:"+String(display_show)+"<br>DClear:" + String(display_clear);
+            request->send(200, "text/html", message);
+        });
+        server.onNotFound(notFound);
+        server.begin();
     }
 
-    Serial.print("IP Address: ");
-    Serial.println(WiFi.localIP());
-
-    server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
-        request->send(200, "text/html", "<form method=post><input type='submit'></form>");
-    });
-
-    // Send a POST request to <IP>/post with a form field message set to <message>
-    server.on("/", HTTP_POST, [](AsyncWebServerRequest *request){
-        if (request->hasParam("x", true)) {
-            message_x = request->getParam("x", true)->value();
-        }
-        if (request->hasParam("y", true)) {
-            message_y = request->getParam("y", true)->value();
-        }
-        if (request->hasParam("message_size", true)) {
-            message_size = request->getParam("message_size", true)->value();
-        }
-        if (request->hasParam("message_font", true)) {
-            message_font = request->getParam("message_font", true)->value();
-        }
-        if (request->hasParam("message_text", true)) {
-            message_text = request->getParam("message_text", true)->value();
-        }
-        if (request->hasParam("clear", true) && request->getParam("clear", true)->value()) {
-            display_clear = true;
-        }
-        if (request->hasParam("show", true) && request->getParam("show", true)->value()) {
-            display_show = true;
-        }
-        message = "<form method=post><label>X</label><input name='x' value='"+message_x+"'/>"
-                  +"<br><label>Y</label><input name='y' value='"+message_y+"'/>"
-                  +"<br><label>size</label><input name='message_size' value='"+message_size+"'/><br>"
-                  +"<br><label>font</label><input name='message_font' value='"+message_font+"'/><br>"
-                  +"<br><label>text</label><input name='message_text' value='"+message_text+"'/>"
-                  +"<br><input type='submit' name='clear' value='clear'/>"
-                  +"<input type='submit' name='show' value='show'/><br><input type='submit'/></form><br>DShow:"+String(display_show)+"<br>DClear:" + String(display_clear);
-        request->send(200, "text/html", message);
-    });
-
-    server.onNotFound(notFound);
-
-    server.begin();
 
     Serial.println("Getting single-ended readings from AIN0..3");
     Serial.println("ADC Range: +/- 6.144V (1 bit = 0.1875mV/ADS1115)");
@@ -212,7 +208,7 @@ void setup() {
     // Show initial display buffer contents on the screen --
     // the library initializes this with an Adafruit splash screen.
     display.display();
-    delay(2000); // Pause for 2 seconds
+    delay(1000); // Pause for 2 seconds
 
     // Clear the buffer
     display.clearDisplay();
@@ -223,7 +219,7 @@ void setup() {
     Serial.println("Calibrating... Ensure that no current flows through the sensor at this moment");
     int zero = sensor.calibrate();
     Serial.println("Done!");
-    Serial.println("Zero point for this sensor = " + zero);
+    Serial.println("Zero point for this sensor = " + String(zero));
 
     //Initialize Ticker every 0.5s
     d_seconds = 1;
@@ -276,10 +272,10 @@ void loop() {
         display.display();
     }
     // show data on display
-    d_volts = volts0;
-    d_volts_s1 = volts0;
-    d_volts_s2 = volts1;
-    d_volts_s3 = volts2;
+    d_volts = volts2;
+    d_volts_s1 = volts1;
+    d_volts_s2 = volts2;
+    d_volts_s3 = volts3;
     d_amps = I;
     d_wats = d_amps * d_volts;
     showDataOnDisplay();
