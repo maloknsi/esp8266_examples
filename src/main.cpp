@@ -29,19 +29,17 @@
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &SPI, OLED_DC, OLED_RESET, OLED_CS);
 Adafruit_ADS1115 ads;  /* Use this for the 16-bit version */
-// We have 30 amps version sensor connected to A0 pin of arduino
-// Replace with your version if necessary
-ACS712 sensor(ACS712_30A, A0);
+//ACS712 sensor(ACS712_30A, A0);
 AsyncWebServer server(80);
 Ticker timer1;
 
 #define NUMFLAKES     10 // Number of snowflakes in the animation example
-
 #define LOGO_HEIGHT   16
 #define LOGO_WIDTH    16
 
 float d_volts, d_amps, d_wats, d_amp_hours, d_wat_hours, d_volts_s1,d_volts_s2,d_volts_s3;
 uint32_t d_seconds;
+float amps_zero;
 
 const char* ssid = "Tenda_B01928";
 const char* password = "22071982";
@@ -104,11 +102,11 @@ void showDataOnDisplay() {
 
     // show s1,s2,s3 volts
     display.setCursor(80, 35);
-    display.println("s1 " + String(d_volts_s1,2));
+    display.println("1 " + String(d_volts_s1,3));
     display.setCursor(80, 45);
-    display.println("s2 " + String(d_volts_s2,2));
+    display.println("2 " + String(d_volts_s2,3));
     display.setCursor(80, 55);
-    display.println("s3 " + String(d_volts_s3,2));
+    display.println("3 " + String(d_volts_s3,3));
 
     display.display();
     //display.cp437(true);         // Use full 256 char 'Code Page 437' font
@@ -122,6 +120,7 @@ void setup() {
         Serial.println(F("SSD1306 allocation failed"));
         for(;;); // Don't proceed, loop forever
     }
+
     if (false){
         // test fonts
         display.setFont(&FreeSerifBold12pt7b);
@@ -138,6 +137,7 @@ void setup() {
         }
         return;
     }
+
     // HTML SERVER
     WiFi.mode(WIFI_STA);
     WiFi.begin(ssid, password);
@@ -195,7 +195,7 @@ void setup() {
     //                                                                ADS1015  ADS1115
     //                                                                -------  -------
     // ads.setGain(GAIN_TWOTHIRDS);  // 2/3x gain +/- 6.144V  1 bit = 3mV      0.1875mV (default)
-    // ads.setGain(GAIN_ONE);        // 1x gain   +/- 4.096V  1 bit = 2mV      0.125mV
+     ads.setGain(GAIN_ONE);        // 1x gain   +/- 4.096V  1 bit = 2mV      0.125mV
     // ads.setGain(GAIN_TWO);        // 2x gain   +/- 2.048V  1 bit = 1mV      0.0625mV
     // ads.setGain(GAIN_FOUR);       // 4x gain   +/- 1.024V  1 bit = 0.5mV    0.03125mV
     // ads.setGain(GAIN_EIGHT);      // 8x gain   +/- 0.512V  1 bit = 0.25mV   0.015625mV
@@ -205,21 +205,25 @@ void setup() {
         Serial.println("Failed to initialize ADS.");
         while (1);
     }
+
     // Show initial display buffer contents on the screen --
     // the library initializes this with an Adafruit splash screen.
     display.display();
-    delay(1000); // Pause for 2 seconds
-
+    //delay(1000); // Pause for 2 seconds
     // Clear the buffer
     display.clearDisplay();
     // calibrate() method calibrates zero point of sensor,
     // It is not necessary, but may positively affect the accuracy
     // Ensure that no current flows through the sensor at this moment
     // If you are not sure that the current through the sensor will not leak during calibration - comment out this method
+
     Serial.println("Calibrating... Ensure that no current flows through the sensor at this moment");
-    int zero = sensor.calibrate();
+    int16_t adc0 = ads.readADC_SingleEnded(3);
+    amps_zero = ads.computeVolts(adc0);
+
+    //int zero = sensor.calibrate();
     Serial.println("Done!");
-    Serial.println("Zero point for this sensor = " + String(zero));
+    Serial.println("Zero point for this sensor = " + String(amps_zero));
 
     //Initialize Ticker every 0.5s
     d_seconds = 1;
@@ -248,10 +252,10 @@ void loop() {
     Serial.print("AIN3: "); Serial.print(adc3); Serial.print("  "); Serial.print(volts3); Serial.println("V");
 
 //    delay(1000);
-    float I = sensor.getCurrentDC();
+//    float I = sensor.getCurrentDC();
 
     // Send it to serial
-    Serial.println(String("I = ") + I + " A");
+    //Serial.println(String("I = ") + I + " A");
 
     // show message from WEB SERVER
     if (display_show){
@@ -272,11 +276,11 @@ void loop() {
         display.display();
     }
     // show data on display
-    d_volts = volts2;
-    d_volts_s1 = volts1;
-    d_volts_s2 = volts2;
+    d_volts = volts0;
+    d_volts_s1 = volts0;
+    d_volts_s2 = volts1;
     d_volts_s3 = volts3;
-    d_amps = I;
+    d_amps = (amps_zero - volts3) * 10;
     d_wats = d_amps * d_volts;
     showDataOnDisplay();
     // Wait a second before the new measurement
