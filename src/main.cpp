@@ -4,12 +4,12 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <Adafruit_ADS1X15.h>
-#include "ACS712.h"
 #include "Fonts/FreeSerifBold12pt7b.h"
 #include <ESP8266WiFi.h>
 #include <ESPAsyncTCP.h>
 #include <ESPAsyncWebServer.h>
-#include <Ticker.h>  //Ticker Library
+#include <Ticker.h>
+#include <EEPROM.h>
 
 //  Arduino UNO has 5.0 volt with a max ADC value of 1023 steps
 //  ACS712 5A  uses 185 mV per A
@@ -41,8 +41,30 @@ float d_volts, d_amps, d_wats, d_amp_hours, d_wat_hours, d_volts_s1,d_volts_s2,d
 uint32_t d_seconds;
 float amps_zero;
 
-const char* ssid = "Tenda_B01928";
-const char* password = "22071982";
+struct configData
+{
+    char wifi_ssid[20];
+    char wifi_password[20];
+    char iot_server[50];
+    float correct_v0;
+    float correct_v1;
+    float correct_v2;
+//    bool sleep;
+//    uint16_t brightness;
+};
+
+configData appConfig =
+        {
+                "MALOK2",
+                "aposum1982",
+                "https://www.example-api.com",
+                1,
+                1,
+                1
+        };
+
+String ssid = "Tenda_B01928";
+String password = "22071982";
 
 const char* PARAM_MESSAGE = "message";
 
@@ -55,15 +77,99 @@ String message_font = "";
 boolean display_show = false;
 boolean display_clear = false;
 
-void notFound(AsyncWebServerRequest *request) {
+void configSave(){
+    EEPROM.put(0, appConfig);
+    if (EEPROM.commit()) {
+        Serial.println("EEPROM successfully committed!");
+    } else {
+        Serial.println("ERROR! EEPROM commit failed!");
+    }
+}
+void configLoad(){
+    EEPROM.get(0,appConfig);
+}
+
+void requestNotFound(AsyncWebServerRequest *request) {
     request->send(404, "text/plain", "Not found");
 }
 
-String IntToString(int counter){
+void requestGet(AsyncWebServerRequest *request) {
+    request->send(200, "text/html", "<form method=post><input type='submit'></form>");
+}
+
+void requestPost(AsyncWebServerRequest *request) {
+    if (request->hasParam("x", true)) {
+        message_x = request->getParam("x", true)->value();
+    }
+    if (request->hasParam("y", true)) {
+        message_y = request->getParam("y", true)->value();
+    }
+    if (request->hasParam("message_size", true)) {
+        message_size = request->getParam("message_size", true)->value();
+    }
+    if (request->hasParam("message_font", true)) {
+        message_font = request->getParam("message_font", true)->value();
+    }
+    if (request->hasParam("message_text", true)) {
+        message_text = request->getParam("message_text", true)->value();
+    }
+    if (request->hasParam("clear", true) && request->getParam("clear", true)->value()) {
+        display_clear = true;
+    }
+    if (request->hasParam("show", true) && request->getParam("show", true)->value()) {
+        display_show = true;
+    }
+    if (request->hasParam("wifi_set", true) && request->getParam("wifi_set", true)->value()) {
+       request->getParam("wifi_ssid", true)->value().toCharArray(appConfig.wifi_ssid,20);
+       request->getParam("wifi_password", true)->value().toCharArray(appConfig.wifi_password,20);
+        configSave();
+    }
+    message = String("<form method=post><label>WIFI SSID</label><input name='wifi_ssid' value='")+appConfig.wifi_ssid+"'/>"
+              +"<br><label>WIFI SSID</label><input name='wifi_password' value='"+appConfig.wifi_password+"'/>"
+              +"<br><label>X</label><input name='x' value='"+message_x+"'/>"
+              +"<br><label>Y</label><input name='y' value='"+message_y+"'/>"
+              +"<br><label>size</label><input name='message_size' value='"+message_size+"'/><br>"
+              +"<br><label>font</label><input name='message_font' value='"+message_font+"'/><br>"
+              +"<br><label>text</label><input name='message_text' value='"+message_text+"'/>"
+              +"<br><input type='submit' name='wifi_set' value='wifi_set'/><input type='submit' name='clear' value='clear'/>"
+              +"<input type='submit' name='show' value='show'/><br><input type='submit'/></form><br>DShow:"+String(display_show)+"<br>DClear:" + String(display_clear);
+    request->send(200, "text/html", message);
+}
+
+String intToString(int counter){
     return (counter < 10 ? "0" : "") + String(counter);
 }
 
-void TimerHandler1()
+String eepromGet(int addr){
+    String strText;
+    for(int i=0;i<20;i++)
+    {
+        uint8_t _char = EEPROM.read(addr+i);
+        if (_char == 0) break;
+        strText = strText + char(_char);
+    }
+    //EEPROM.get(addr,strText);
+    return strText;
+}
+
+
+
+void eepromSet(int addr, String value){
+    for(int i=0;i<int(value.length());i++)
+    {
+        EEPROM.write(addr+i, value[i]); //Write one by one with starting address of 0x0F
+    }
+    int i = addr + int(value.length());
+    EEPROM.write(i,0);
+    //EEPROM.put(addr, value);
+    if (EEPROM.commit()) {
+        Serial.println("EEPROM successfully committed!");
+    } else {
+        Serial.println("ERROR! EEPROM commit failed!");
+    }
+}
+
+void timerHandler1()
 {
     d_seconds++;
     d_amp_hours = d_amp_hours + d_amps / 3600;
@@ -98,7 +204,7 @@ void showDataOnDisplay() {
     m = t % 60;
     t = (t - m)/60;
     h = t;
-    display.println(IntToString(h)+":"+IntToString(m)+":"+IntToString(s));
+    display.println(intToString(h) + ":" + intToString(m) + ":" + intToString(s));
 
     // show s1,s2,s3 volts
     display.setCursor(80, 35);
@@ -114,13 +220,20 @@ void showDataOnDisplay() {
 
 void setup() {
     Serial.begin(9600);
-
+    EEPROM.begin(150);
+    //delay(5000);
+    Serial.println(F("init battery_indicator"));
+    //eepromSet(0,"Tenda_B01928");
+    //eepromSet(20,"22071982");
+    //configSave();
+    configLoad();
+    Serial.println(appConfig.wifi_ssid);
+    Serial.println(F("init display"));
     // SSD1306_SWITCHCAPVCC = generate display voltage from 3.3V internally
     if(!display.begin(SSD1306_SWITCHCAPVCC)) {
         Serial.println(F("SSD1306 allocation failed"));
         for(;;); // Don't proceed, loop forever
     }
-
     if (false){
         // test fonts
         display.setFont(&FreeSerifBold12pt7b);
@@ -137,61 +250,53 @@ void setup() {
         }
         return;
     }
+//    ssid = eepromGet(0);
+//    password = eepromGet(20);
 
+    // Show initial display buffer contents on the screen --
+    // the library initializes this with an Adafruit splash screen.
+    display.setTextColor(SSD1306_WHITE); // Draw white text
+    display.clearDisplay();
+    delay(1000); // Pause for 2 seconds
+    display.setTextSize(1);
+    display.setCursor(0, 10);
+    Serial.println(String("init WIFI:") + appConfig.wifi_ssid + "|" + appConfig.wifi_password);
+    display.println("init wifi");
+    display.println(appConfig.wifi_ssid);
+    display.println(appConfig.wifi_password);
+    display.display();
     // HTML SERVER
     WiFi.mode(WIFI_STA);
-    WiFi.begin(ssid, password);
+    WiFi.begin(appConfig.wifi_ssid, appConfig.wifi_password);
     if (WiFi.waitForConnectResult() != WL_CONNECTED) {
-        Serial.printf("WiFi Failed!\n");
+        display.println("WiFi Failed!");
+        display.display();
+        Serial.println("WiFi Failed!");
+        //----- INIT SOFT AP
+        WiFi.softAP("battery_indicator");
+        server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){requestGet(request);});
+        server.on("/", HTTP_POST, [](AsyncWebServerRequest *request){requestPost(request);});
+        server.onNotFound(requestNotFound);
+        server.begin();
+        display.println("SoftAp" + WiFi.softAPIP().toString());
+        display.display();
+        Serial.println("SoftAp" + WiFi.softAPIP().toString());
+        delay(10000);
     } else {
-        Serial.print("IP Address: ");
-        Serial.println(WiFi.localIP());
-        server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
-            request->send(200, "text/html", "<form method=post><input type='submit'></form>");
-        });
-        // Send a POST request to <IP>/post with a form field message set to <message>
-        server.on("/", HTTP_POST, [](AsyncWebServerRequest *request){
-            if (request->hasParam("x", true)) {
-                message_x = request->getParam("x", true)->value();
-            }
-            if (request->hasParam("y", true)) {
-                message_y = request->getParam("y", true)->value();
-            }
-            if (request->hasParam("message_size", true)) {
-                message_size = request->getParam("message_size", true)->value();
-            }
-            if (request->hasParam("message_font", true)) {
-                message_font = request->getParam("message_font", true)->value();
-            }
-            if (request->hasParam("message_text", true)) {
-                message_text = request->getParam("message_text", true)->value();
-            }
-            if (request->hasParam("clear", true) && request->getParam("clear", true)->value()) {
-                display_clear = true;
-            }
-            if (request->hasParam("show", true) && request->getParam("show", true)->value()) {
-                display_show = true;
-            }
-            message = "<form method=post><label>X</label><input name='x' value='"+message_x+"'/>"
-                      +"<br><label>Y</label><input name='y' value='"+message_y+"'/>"
-                      +"<br><label>size</label><input name='message_size' value='"+message_size+"'/><br>"
-                      +"<br><label>font</label><input name='message_font' value='"+message_font+"'/><br>"
-                      +"<br><label>text</label><input name='message_text' value='"+message_text+"'/>"
-                      +"<br><input type='submit' name='clear' value='clear'/>"
-                      +"<input type='submit' name='show' value='show'/><br><input type='submit'/></form><br>DShow:"+String(display_show)+"<br>DClear:" + String(display_clear);
-            request->send(200, "text/html", message);
-        });
-        server.onNotFound(notFound);
+        display.clearDisplay();
+        display.println("WiFi connected!");
+        Serial.println("WiFi connected!");
+        display.println(String("IP: "));
+        display.print(WiFi.localIP());
+        display.display();
+        delay(3000);
+        server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){requestGet(request);});
+        server.on("/", HTTP_POST, [](AsyncWebServerRequest *request){requestPost(request);});
+        server.onNotFound(requestNotFound);
         server.begin();
     }
 
 
-    Serial.println("Getting single-ended readings from AIN0..3");
-    Serial.println("ADC Range: +/- 6.144V (1 bit = 0.1875mV/ADS1115)");
-    // The ADC input range (or gain) can be changed via the following
-    // functions, but be careful never to exceed VDD +0.3V max, or to
-    // exceed the upper and lower limits if you adjust the input range!
-    // Setting these values incorrectly may destroy your ADC!
     //                                                                ADS1015  ADS1115
     //                                                                -------  -------
     // ads.setGain(GAIN_TWOTHIRDS);  // 2/3x gain +/- 6.144V  1 bit = 3mV      0.1875mV (default)
@@ -201,21 +306,11 @@ void setup() {
     // ads.setGain(GAIN_EIGHT);      // 8x gain   +/- 0.512V  1 bit = 0.25mV   0.015625mV
     // ads.setGain(GAIN_SIXTEEN);    // 16x gain  +/- 0.256V  1 bit = 0.125mV  0.0078125mV
 
+    Serial.println("init adc");
     if (!ads.begin()) {
         Serial.println("Failed to initialize ADS.");
         while (1);
     }
-
-    // Show initial display buffer contents on the screen --
-    // the library initializes this with an Adafruit splash screen.
-    display.display();
-    //delay(1000); // Pause for 2 seconds
-    // Clear the buffer
-    display.clearDisplay();
-    // calibrate() method calibrates zero point of sensor,
-    // It is not necessary, but may positively affect the accuracy
-    // Ensure that no current flows through the sensor at this moment
-    // If you are not sure that the current through the sensor will not leak during calibration - comment out this method
 
     Serial.println("Calibrating... Ensure that no current flows through the sensor at this moment");
     int16_t adc0 = ads.readADC_SingleEnded(3);
@@ -228,7 +323,7 @@ void setup() {
     //Initialize Ticker every 0.5s
     d_seconds = 1;
     d_amp_hours = d_wat_hours = 0;
-    timer1.attach(1, TimerHandler1); //Use attach_ms if you need time in ms
+    timer1.attach(1, timerHandler1); //Use attach_ms if you need time in ms
 }
 
 void loop() {
@@ -251,12 +346,6 @@ void loop() {
     Serial.print("AIN2: "); Serial.print(adc2); Serial.print("  "); Serial.print(volts2); Serial.println("V");
     Serial.print("AIN3: "); Serial.print(adc3); Serial.print("  "); Serial.print(volts3); Serial.println("V");
 
-//    delay(1000);
-//    float I = sensor.getCurrentDC();
-
-    // Send it to serial
-    //Serial.println(String("I = ") + I + " A");
-
     // show message from WEB SERVER
     if (display_show){
         display_show = false;
@@ -270,6 +359,8 @@ void loop() {
         display.println(message_text);
         display.display();
     }
+
+
     if (display_clear){
         display_clear = false;
         display.clearDisplay();
