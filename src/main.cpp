@@ -1,12 +1,10 @@
 #include <Arduino.h>
 #include <SPI.h>
 #include <Wire.h>
-#include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <Adafruit_ADS1X15.h>
 #include "Fonts/FreeSerifBold12pt7b.h"
 #include <ESP8266WiFi.h>
-#include <ESPAsyncTCP.h>
 #include <ESPAsyncWebServer.h>
 #include <Ticker.h>
 #include <EEPROM.h>
@@ -23,13 +21,8 @@
 #define OLED_CS     16
 #define OLED_RESET  2
 
-#define TIMER1_INTERVAL_MS        20
-#define DEBOUNCING_INTERVAL_MS    100
-#define LONG_PRESS_INTERVAL_MS    5000
-
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &SPI, OLED_DC, OLED_RESET, OLED_CS);
 Adafruit_ADS1115 ads;  /* Use this for the 16-bit version */
-//ACS712 sensor(ACS712_30A, A0);
 AsyncWebServer server(80);
 Ticker timer1;
 
@@ -49,24 +42,20 @@ struct configData
     float correct_v0;
     float correct_v1;
     float correct_v2;
-//    bool sleep;
-//    uint16_t brightness;
+    float correct_v3;
+    float correct_amp;
 };
 
 configData appConfig =
         {
-                "MALOK2",
+                "MALOK_2",
                 "aposum1982",
                 "https://www.example-api.com",
-                1,
-                1,
-                1
+                1.1,
+                1.1,
+                1.1,
+                1.1
         };
-
-String ssid = "Tenda_B01928";
-String password = "22071982";
-
-const char* PARAM_MESSAGE = "message";
 
 String message_text = "";
 String message_size = "";
@@ -77,7 +66,7 @@ String message_font = "";
 boolean display_show = false;
 boolean display_clear = false;
 
-void configSave(){
+void appConfigSave(){
     EEPROM.put(0, appConfig);
     if (EEPROM.commit()) {
         Serial.println("EEPROM successfully committed!");
@@ -85,7 +74,8 @@ void configSave(){
         Serial.println("ERROR! EEPROM commit failed!");
     }
 }
-void configLoad(){
+
+void appConfigLoad(){
     EEPROM.get(0,appConfig);
 }
 
@@ -120,9 +110,18 @@ void requestPost(AsyncWebServerRequest *request) {
         display_show = true;
     }
     if (request->hasParam("wifi_set", true) && request->getParam("wifi_set", true)->value()) {
-       request->getParam("wifi_ssid", true)->value().toCharArray(appConfig.wifi_ssid,20);
-       request->getParam("wifi_password", true)->value().toCharArray(appConfig.wifi_password,20);
-        configSave();
+        if (request->hasParam("wifi_ssid", true) && request->getParam("wifi_ssid", true)->value()) {
+            request->getParam("wifi_ssid", true)->value().toCharArray(appConfig.wifi_ssid,20);
+        }
+        if (request->hasParam("wifi_password", true) && request->getParam("wifi_password", true)->value()) {
+            request->getParam("wifi_password", true)->value().toCharArray(appConfig.wifi_password,20);
+        }
+        if (request->hasParam("v0", true) && request->getParam("v0", true)->value()) {
+            float v0 = request->getParam("v0", true)->value().toFloat();
+            appConfig.correct_v0 = v0;
+        }
+
+       appConfigSave();
     }
     message = String("<form method=post><label>WIFI SSID</label><input name='wifi_ssid' value='")+appConfig.wifi_ssid+"'/>"
               +"<br><label>WIFI SSID</label><input name='wifi_password' value='"+appConfig.wifi_password+"'/>"
@@ -138,35 +137,6 @@ void requestPost(AsyncWebServerRequest *request) {
 
 String intToString(int counter){
     return (counter < 10 ? "0" : "") + String(counter);
-}
-
-String eepromGet(int addr){
-    String strText;
-    for(int i=0;i<20;i++)
-    {
-        uint8_t _char = EEPROM.read(addr+i);
-        if (_char == 0) break;
-        strText = strText + char(_char);
-    }
-    //EEPROM.get(addr,strText);
-    return strText;
-}
-
-
-
-void eepromSet(int addr, String value){
-    for(int i=0;i<int(value.length());i++)
-    {
-        EEPROM.write(addr+i, value[i]); //Write one by one with starting address of 0x0F
-    }
-    int i = addr + int(value.length());
-    EEPROM.write(i,0);
-    //EEPROM.put(addr, value);
-    if (EEPROM.commit()) {
-        Serial.println("EEPROM successfully committed!");
-    } else {
-        Serial.println("ERROR! EEPROM commit failed!");
-    }
 }
 
 void timerHandler1()
@@ -223,10 +193,8 @@ void setup() {
     EEPROM.begin(150);
     //delay(5000);
     Serial.println(F("init battery_indicator"));
-    //eepromSet(0,"Tenda_B01928");
-    //eepromSet(20,"22071982");
-    //configSave();
-    configLoad();
+    appConfigSave();
+    appConfigLoad();
     Serial.println(appConfig.wifi_ssid);
     Serial.println(F("init display"));
     // SSD1306_SWITCHCAPVCC = generate display voltage from 3.3V internally
@@ -250,8 +218,6 @@ void setup() {
         }
         return;
     }
-//    ssid = eepromGet(0);
-//    password = eepromGet(20);
 
     // Show initial display buffer contents on the screen --
     // the library initializes this with an Adafruit splash screen.
@@ -312,13 +278,12 @@ void setup() {
         while (1);
     }
 
-    Serial.println("Calibrating... Ensure that no current flows through the sensor at this moment");
-    int16_t adc0 = ads.readADC_SingleEnded(3);
-    amps_zero = ads.computeVolts(adc0);
-
-    //int zero = sensor.calibrate();
-    Serial.println("Done!");
-    Serial.println("Zero point for this sensor = " + String(amps_zero));
+//    Serial.println("Calibrating... Ensure that no current flows through the sensor at this moment");
+//    int16_t adc0 = ads.readADC_SingleEnded(3);
+//    amps_zero = ads.computeVolts(adc0);
+//
+//    Serial.println("Done!");
+//    Serial.println("Zero point for this sensor = " + String(amps_zero));
 
     //Initialize Ticker every 0.5s
     d_seconds = 1;
@@ -331,9 +296,9 @@ void loop() {
     float volts0, volts1, volts2, volts3;
 
     adc0 = ads.readADC_SingleEnded(0);
-    adc1 = ads.readADC_SingleEnded(1);
+    adc3 = ads.readADC_SingleEnded(1);
     adc2 = ads.readADC_SingleEnded(2);
-    adc3 = ads.readADC_SingleEnded(3);
+    adc1 = ads.readADC_SingleEnded(3);
 
     volts0 = ads.computeVolts(adc0);
     volts1 = ads.computeVolts(adc1);
@@ -367,11 +332,11 @@ void loop() {
         display.display();
     }
     // show data on display
-    d_volts = volts0;
-    d_volts_s1 = volts0;
-    d_volts_s2 = volts1;
-    d_volts_s3 = volts3;
-    d_amps = (amps_zero - volts3) * 10;
+    d_volts = volts3 * appConfig.correct_v3;
+    d_volts_s1 = volts1 * appConfig.correct_v1;
+    d_volts_s2 = volts2 * appConfig.correct_v2;
+    d_volts_s3 = volts3 * appConfig.correct_v3;
+    d_amps = volts0  * appConfig.correct_amp;// (amps_zero - volts3) * 1000 / 66;
     d_wats = d_amps * d_volts;
     showDataOnDisplay();
     // Wait a second before the new measurement
