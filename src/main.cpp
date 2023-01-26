@@ -31,8 +31,9 @@ Ticker timer1;
 #define LOGO_WIDTH    16
 
 float d_volts, d_amps, d_wats, d_amp_hours, d_wat_hours, d_volts_s1,d_volts_s2,d_volts_s3;
+float volts0, volts1, volts2, volts3;
 uint32_t d_seconds;
-float amps_zero;
+boolean isShowDataOnDisplay = true;
 
 struct configData
 {
@@ -48,13 +49,14 @@ struct configData
 
 configData appConfig =
         {
-                "MALOK_2",
-                "aposum1982",
+                "Mi Phone",
+                "22071982",
                 "https://www.example-api.com",
-                1.1,
-                1.1,
-                1.1,
-                1.1
+                8.42,
+                8.48,
+                4.46,
+                2.04,
+                1.0
         };
 
 String message_text = "";
@@ -67,12 +69,39 @@ boolean display_show = false;
 boolean display_clear = false;
 
 void appConfigSave(){
+    isShowDataOnDisplay = false;
+    //display.clearDisplay();
+    delay(1000);
+    Serial.println("appConfig:");
+    //display.println("appConfig:");
+
+    Serial.println("wifi" + String(appConfig.wifi_ssid) + " / " + String(appConfig.wifi_password));
+    //display.println("wifi:" + String(appConfig.wifi_ssid));
+    //display.println("wifi_password:" + String(appConfig.wifi_password));
+
+    Serial.println("correct (v0,v1,v2,v3,amp):");
+    //display.println("correct (v0,v1,v2,v3,amp):");
+    //display.println("");
+
+    Serial.println(String(appConfig.correct_v0) + "/" + String(appConfig.correct_v1) + "/" + String(appConfig.correct_v2) + "/" + String(appConfig.correct_v3)+ "/" + String(appConfig.correct_amp));
+    //display.print(String(appConfig.correct_v0) + "/" + String(appConfig.correct_v1) + "/" + String(appConfig.correct_v2) + "/" + String(appConfig.correct_v3)+ "/" + String(appConfig.correct_amp));
+
+    //display.display();
+    delay(3000);
+    Serial.println("save eeprom");
+    display.println("save eeprom");
+    display.display();
     EEPROM.put(0, appConfig);
     if (EEPROM.commit()) {
         Serial.println("EEPROM successfully committed!");
+        display.println("EEPROM success!");
     } else {
         Serial.println("ERROR! EEPROM commit failed!");
+        display.println("EEPROM failed!");
     }
+    display.display();
+    delay(5000);
+    isShowDataOnDisplay = true;
 }
 
 void appConfigLoad(){
@@ -118,20 +147,42 @@ void requestPost(AsyncWebServerRequest *request) {
         }
         if (request->hasParam("v0", true) && request->getParam("v0", true)->value()) {
             float v0 = request->getParam("v0", true)->value().toFloat();
-            appConfig.correct_v0 = v0;
+            appConfig.correct_v0 = v0 / volts0;
         }
-
-       appConfigSave();
+        if (request->hasParam("v1", true) && request->getParam("v1", true)->value()) {
+            float v1 = request->getParam("v1", true)->value().toFloat();
+            appConfig.correct_v1 = v1 / volts1;
+        }
+        if (request->hasParam("v2", true) && request->getParam("v2", true)->value()) {
+            float v2 = request->getParam("v2", true)->value().toFloat();
+            appConfig.correct_v2 = v2 / volts2;
+        }
+        if (request->hasParam("v3", true) && request->getParam("v3", true)->value()) {
+            float v3 = request->getParam("v3", true)->value().toFloat();
+            appConfig.correct_v3 = v3 / volts3;
+        }
+        if (request->hasParam("amps", true) && request->getParam("amps", true)->value()) {
+            float amps = request->getParam("amps", true)->value().toFloat();
+            appConfig.correct_amp = amps / d_amps;
+        }
+       //appConfigSave();
     }
     message = String("<form method=post><label>WIFI SSID</label><input name='wifi_ssid' value='")+appConfig.wifi_ssid+"'/>"
               +"<br><label>WIFI SSID</label><input name='wifi_password' value='"+appConfig.wifi_password+"'/>"
+              +"<br><label>v0 ["+appConfig.correct_v0+"]</label><input name='v0' value='"+d_volts+"'/>"
+              +"<br><label>v1 ["+appConfig.correct_v1+"]</label><input name='v1' value='"+d_volts_s1+"'/>"
+              +"<br><label>v2 ["+appConfig.correct_v2+"]</label><input name='v2' value='"+d_volts_s2+"'/>"
+              +"<br><label>v3 ["+appConfig.correct_v3+"]</label><input name='v3' value='"+d_volts_s3+"'/>"
+              +"<br><label>amps ["+appConfig.correct_amp+"]</label><input name='amps' value='"+d_amps+"'/>"
+              +"<input type='submit' name='wifi_set' value='wifi_set'/>"
               +"<br><label>X</label><input name='x' value='"+message_x+"'/>"
               +"<br><label>Y</label><input name='y' value='"+message_y+"'/>"
               +"<br><label>size</label><input name='message_size' value='"+message_size+"'/><br>"
               +"<br><label>font</label><input name='message_font' value='"+message_font+"'/><br>"
               +"<br><label>text</label><input name='message_text' value='"+message_text+"'/>"
-              +"<br><input type='submit' name='wifi_set' value='wifi_set'/><input type='submit' name='clear' value='clear'/>"
-              +"<input type='submit' name='show' value='show'/><br><input type='submit'/></form><br>DShow:"+String(display_show)+"<br>DClear:" + String(display_clear);
+              +"<br><input type='submit' name='clear' value='clear'/>"
+              +"<input type='submit' name='show' value='show'/><br><input type='submit'/></form>"
+              +"<br>DShow:"+String(display_show)+"<br>DClear:" + String(display_clear);
     request->send(200, "text/html", message);
 }
 
@@ -147,55 +198,52 @@ void timerHandler1()
 }
 
 void showDataOnDisplay() {
-    display.clearDisplay();
-    display.setFont(&FreeSerifBold12pt7b);
-    display.clearDisplay();
-    display.setTextSize(1);
-    display.setTextColor(SSD1306_WHITE);
-    display.setCursor(0, 18);
-    display.print(String(d_amps,2)+"A");
-    display.setCursor(0, 38);
-    display.print(String(d_volts,2)+"v");
-    display.setCursor(0, 62);
-    display.print(String(d_wats,2)+"w");
+    if (isShowDataOnDisplay){
+        display.clearDisplay();
+        display.setFont(&FreeSerifBold12pt7b);
+        display.clearDisplay();
+        display.setTextSize(1);
+        display.setTextColor(SSD1306_WHITE);
+        display.setCursor(0, 18);
+        display.print(String(d_amps,2)+"A");
+        display.setCursor(0, 38);
+        display.print(String(d_volts,2)+"v");
+        display.setCursor(0, 62);
+        display.print(String(d_wats,2)+"w");
 
-    display.setFont();
-    display.setTextSize(1);
-    display.setCursor(80, 0);
-    display.println(String(d_amp_hours,3)+"ah");
-    display.setCursor(80, 10);
-    display.println(String(d_wat_hours,3)+"wh");
-    // show time
-    display.setCursor(80, 20);
-    uint16_t h,m,s;
-    uint32_t t = d_seconds;
-    s = t % 60;
-    t = (t - s)/60;
-    m = t % 60;
-    t = (t - m)/60;
-    h = t;
-    display.println(intToString(h) + ":" + intToString(m) + ":" + intToString(s));
+        display.setFont();
+        display.setTextSize(1);
+        display.setCursor(80, 0);
+        display.println(String(d_amp_hours,3)+"ah");
+        display.setCursor(80, 10);
+        display.println(String(d_wat_hours,3)+"wh");
+        // show time
+        display.setCursor(80, 20);
+        uint16_t h,m,s;
+        uint32_t t = d_seconds;
+        s = t % 60;
+        t = (t - s)/60;
+        m = t % 60;
+        t = (t - m)/60;
+        h = t;
+        display.println(intToString(h) + ":" + intToString(m) + ":" + intToString(s));
 
-    // show s1,s2,s3 volts
-    display.setCursor(80, 35);
-    display.println("1 " + String(d_volts_s1,3));
-    display.setCursor(80, 45);
-    display.println("2 " + String(d_volts_s2,3));
-    display.setCursor(80, 55);
-    display.println("3 " + String(d_volts_s3,3));
+        // show s1,s2,s3 volts
+        display.setCursor(80, 35);
+        display.println("1 " + String(d_volts_s1 - d_volts_s2,3));
+        display.setCursor(80, 45);
+        display.println("2 " + String(d_volts_s2 - d_volts_s3,3));
+        display.setCursor(80, 55);
+        display.println("3 " + String(d_volts_s3,3));
 
-    display.display();
-    //display.cp437(true);         // Use full 256 char 'Code Page 437' font
+        display.display();
+        //display.cp437(true);         // Use full 256 char 'Code Page 437' font
+    }
 }
 
 void setup() {
     Serial.begin(9600);
-    EEPROM.begin(150);
-    //delay(5000);
     Serial.println(F("init battery_indicator"));
-    appConfigSave();
-    appConfigLoad();
-    Serial.println(appConfig.wifi_ssid);
     Serial.println(F("init display"));
     // SSD1306_SWITCHCAPVCC = generate display voltage from 3.3V internally
     if(!display.begin(SSD1306_SWITCHCAPVCC)) {
@@ -226,6 +274,13 @@ void setup() {
     delay(1000); // Pause for 2 seconds
     display.setTextSize(1);
     display.setCursor(0, 10);
+    //------------------------------
+    Serial.println(F("init eeprom"));
+    EEPROM.begin(sizeof(appConfig));
+    //appConfigSave();
+    appConfigLoad();
+    Serial.println(appConfig.wifi_ssid);
+    //------------------------------
     Serial.println(String("init WIFI:") + appConfig.wifi_ssid + "|" + appConfig.wifi_password);
     display.println("init wifi");
     display.println(appConfig.wifi_ssid);
@@ -255,11 +310,11 @@ void setup() {
         display.println(String("IP: "));
         display.print(WiFi.localIP());
         display.display();
-        delay(3000);
         server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){requestGet(request);});
         server.on("/", HTTP_POST, [](AsyncWebServerRequest *request){requestPost(request);});
         server.onNotFound(requestNotFound);
         server.begin();
+        //delay(3000);
     }
 
 
@@ -293,12 +348,11 @@ void setup() {
 
 void loop() {
     int16_t adc0, adc1, adc2, adc3;
-    float volts0, volts1, volts2, volts3;
 
     adc0 = ads.readADC_SingleEnded(0);
-    adc3 = ads.readADC_SingleEnded(1);
+    adc1 = ads.readADC_SingleEnded(1);
     adc2 = ads.readADC_SingleEnded(2);
-    adc1 = ads.readADC_SingleEnded(3);
+    adc3 = ads.readADC_SingleEnded(3);
 
     volts0 = ads.computeVolts(adc0);
     volts1 = ads.computeVolts(adc1);
@@ -332,11 +386,11 @@ void loop() {
         display.display();
     }
     // show data on display
-    d_volts = volts3 * appConfig.correct_v3;
+    d_volts = volts0 * appConfig.correct_v0;
     d_volts_s1 = volts1 * appConfig.correct_v1;
     d_volts_s2 = volts2 * appConfig.correct_v2;
     d_volts_s3 = volts3 * appConfig.correct_v3;
-    d_amps = volts0  * appConfig.correct_amp;// (amps_zero - volts3) * 1000 / 66;
+    d_amps = (d_volts_s1 - d_volts) * 100 * appConfig.correct_amp;// (amps_zero - volts3) * 1000 / 66;
     d_wats = d_amps * d_volts;
     showDataOnDisplay();
     // Wait a second before the new measurement
