@@ -63,8 +63,9 @@ String message_x = "";
 String message_y = "";
 String message = "";
 String message_font = "";
-boolean display_show = false;
-boolean display_clear = false;
+boolean set_display_show = false;
+boolean set_display_clear = false;
+boolean set_config = false;
 
 void appConfigSave(){
     EEPROM.put(0, appConfig);
@@ -104,10 +105,10 @@ void requestPost(AsyncWebServerRequest *request) {
         message_text = request->getParam("message_text", true)->value();
     }
     if (request->hasParam("clear", true) && request->getParam("clear", true)->value()) {
-        display_clear = true;
+        set_display_clear = true;
     }
     if (request->hasParam("show", true) && request->getParam("show", true)->value()) {
-        display_show = true;
+        set_display_show = true;
     }
     if (request->hasParam("wifi_set", true) && request->getParam("wifi_set", true)->value()) {
         if (request->hasParam("wifi_ssid", true) && request->getParam("wifi_ssid", true)->value()) {
@@ -120,18 +121,17 @@ void requestPost(AsyncWebServerRequest *request) {
             float v0 = request->getParam("v0", true)->value().toFloat();
             appConfig.correct_v0 = v0;
         }
-
-       appConfigSave();
+        set_config = true;
     }
-    message = String("<form method=post><label>WIFI SSID</label><input name='wifi_ssid' value='")+appConfig.wifi_ssid+"'/>"
-              +"<br><label>WIFI SSID</label><input name='wifi_password' value='"+appConfig.wifi_password+"'/>"
-              +"<br><label>X</label><input name='x' value='"+message_x+"'/>"
-              +"<br><label>Y</label><input name='y' value='"+message_y+"'/>"
-              +"<br><label>size</label><input name='message_size' value='"+message_size+"'/><br>"
-              +"<br><label>font</label><input name='message_font' value='"+message_font+"'/><br>"
-              +"<br><label>text</label><input name='message_text' value='"+message_text+"'/>"
-              +"<br><input type='submit' name='wifi_set' value='wifi_set'/><input type='submit' name='clear' value='clear'/>"
-              +"<input type='submit' name='show' value='show'/><br><input type='submit'/></form><br>DShow:"+String(display_show)+"<br>DClear:" + String(display_clear);
+    message = String("<form method=post><label>WIFI SSID</label><input name='wifi_ssid' value='") + appConfig.wifi_ssid + "'/>"
+              + "<br><label>WIFI SSID</label><input name='wifi_password' value='" + appConfig.wifi_password + "'/>"
+              + "<br><label>X</label><input name='x' value='" + message_x + "'/>"
+              + "<br><label>Y</label><input name='y' value='" + message_y + "'/>"
+              + "<br><label>size</label><input name='message_size' value='" + message_size + "'/><br>"
+              + "<br><label>font</label><input name='message_font' value='" + message_font + "'/><br>"
+              + "<br><label>text</label><input name='message_text' value='" + message_text + "'/>"
+              + "<br><input type='submit' name='wifi_set' value='wifi_set'/><input type='submit' name='clear' value='clear'/>"
+              + "<input type='submit' name='show' value='show'/><br><input type='submit'/></form><br>DShow:" + String(set_display_show) + "<br>DClear:" + String(set_display_clear);
     request->send(200, "text/html", message);
 }
 
@@ -193,7 +193,7 @@ void setup() {
     EEPROM.begin(150);
     //delay(5000);
     Serial.println(F("init battery_indicator"));
-    appConfigSave();
+    //appConfigSave();
     appConfigLoad();
     Serial.println(appConfig.wifi_ssid);
     Serial.println(F("init display"));
@@ -312,8 +312,8 @@ void loop() {
     Serial.print("AIN3: "); Serial.print(adc3); Serial.print("  "); Serial.print(volts3); Serial.println("V");
 
     // show message from WEB SERVER
-    if (display_show){
-        display_show = false;
+    if (set_display_show){
+        set_display_show = false;
         if (message_font == "1"){
             display.setFont(&FreeSerifBold12pt7b);
         } else {
@@ -326,10 +326,14 @@ void loop() {
     }
 
 
-    if (display_clear){
-        display_clear = false;
+    if (set_display_clear){
+        set_display_clear = false;
         display.clearDisplay();
         display.display();
+    }
+    if (set_config){
+        set_config = false;
+        appConfigSave();
     }
     // show data on display
     d_volts = volts3 * appConfig.correct_v3;
