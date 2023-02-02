@@ -71,24 +71,25 @@ boolean set_config = false;
 
 void appConfigSave(){
     isShowDataOnDisplay = false;
-    //display.clearDisplay();
+    display.clearDisplay();
+    display.setCursor(0, 0);
     delay(1000);
     Serial.println("appConfig:");
-    //display.println("appConfig:");
+    display.println("appConfig:");
 
     Serial.println("wifi" + String(appConfig.wifi_ssid) + " / " + String(appConfig.wifi_password));
-    //display.println("wifi:" + String(appConfig.wifi_ssid));
-    //display.println("wifi_password:" + String(appConfig.wifi_password));
-
+    display.println("W:" + String(appConfig.wifi_ssid));
+    display.println(appConfig.wifi_password);
+    display.display();
     Serial.println("correct (v0,v1,v2,v3,amp):");
-    //display.println("correct (v0,v1,v2,v3,amp):");
-    //display.println("");
+    display.println("CT (v0,v1,v2,v3,amp):");
+    display.println("");
 
     Serial.println(String(appConfig.correct_v0) + "/" + String(appConfig.correct_v1) + "/" + String(appConfig.correct_v2) + "/" + String(appConfig.correct_v3)+ "/" + String(appConfig.correct_amp));
-    //display.print(String(appConfig.correct_v0) + "/" + String(appConfig.correct_v1) + "/" + String(appConfig.correct_v2) + "/" + String(appConfig.correct_v3)+ "/" + String(appConfig.correct_amp));
+    display.print(String(appConfig.correct_v0) + "/" + String(appConfig.correct_v1) + "/" + String(appConfig.correct_v2) + "/" + String(appConfig.correct_v3)+ "/" + String(appConfig.correct_amp));
 
-    //display.display();
-    delay(3000);
+    display.display();
+    delay(1000);
     Serial.println("save eeprom");
     display.println("save eeprom");
     display.display();
@@ -101,90 +102,17 @@ void appConfigSave(){
         display.println("EEPROM failed!");
     }
     display.display();
-    delay(5000);
+    delay(2000);
     isShowDataOnDisplay = true;
 }
 
 void appConfigLoad(){
     EEPROM.get(0,appConfig);
-}
-
-void requestNotFound(AsyncWebServerRequest *request) {
-    request->send(404, "text/plain", "Not found");
-}
-
-void requestGet(AsyncWebServerRequest *request) {
-    request->send(200, "text/html", "<form method=post><input type='submit'></form>");
-}
-
-void requestPost(AsyncWebServerRequest *request) {
-    if (request->hasParam("x", true)) {
-        message_x = request->getParam("x", true)->value();
-    }
-    if (request->hasParam("y", true)) {
-        message_y = request->getParam("y", true)->value();
-    }
-    if (request->hasParam("message_size", true)) {
-        message_size = request->getParam("message_size", true)->value();
-    }
-    if (request->hasParam("message_font", true)) {
-        message_font = request->getParam("message_font", true)->value();
-    }
-    if (request->hasParam("message_text", true)) {
-        message_text = request->getParam("message_text", true)->value();
-    }
-    if (request->hasParam("clear", true) && request->getParam("clear", true)->value()) {
-        set_display_clear = true;
-    }
-    if (request->hasParam("show", true) && request->getParam("show", true)->value()) {
-        set_display_show = true;
-    }
-    if (request->hasParam("wifi_set", true) && request->getParam("wifi_set", true)->value()) {
-        if (request->hasParam("wifi_ssid", true) && request->getParam("wifi_ssid", true)->value()) {
-            request->getParam("wifi_ssid", true)->value().toCharArray(appConfig.wifi_ssid,20);
-        }
-        if (request->hasParam("wifi_password", true) && request->getParam("wifi_password", true)->value()) {
-            request->getParam("wifi_password", true)->value().toCharArray(appConfig.wifi_password,20);
-        }
-        if (request->hasParam("v0", true) && request->getParam("v0", true)->value()) {
-            float v0 = request->getParam("v0", true)->value().toFloat();
-            appConfig.correct_v0 = v0 / volts0;
-        }
-        if (request->hasParam("v1", true) && request->getParam("v1", true)->value()) {
-            float v1 = request->getParam("v1", true)->value().toFloat();
-            appConfig.correct_v1 = v1 / volts1;
-        }
-        if (request->hasParam("v2", true) && request->getParam("v2", true)->value()) {
-            float v2 = request->getParam("v2", true)->value().toFloat();
-            appConfig.correct_v2 = v2 / volts2;
-        }
-        if (request->hasParam("v3", true) && request->getParam("v3", true)->value()) {
-            float v3 = request->getParam("v3", true)->value().toFloat();
-            appConfig.correct_v3 = v3 / volts3;
-        }
-        if (request->hasParam("amps", true) && request->getParam("amps", true)->value()) {
-            float amps = request->getParam("amps", true)->value().toFloat();
-            appConfig.correct_amp = amps / d_amps;
-        }
-        set_config = true;
-    }
-    message = String("<form method=post><label>WIFI SSID</label><input name='wifi_ssid' value='")+appConfig.wifi_ssid+"'/>"
-              +"<br><label>WIFI SSID</label><input name='wifi_password' value='"+appConfig.wifi_password+"'/>"
-              +"<br><label>v0 ["+appConfig.correct_v0+"]</label><input name='v0' value='"+d_volts+"'/>"
-              +"<br><label>v1 ["+appConfig.correct_v1+"]</label><input name='v1' value='"+d_volts_s1+"'/>"
-              +"<br><label>v2 ["+appConfig.correct_v2+"]</label><input name='v2' value='"+d_volts_s2+"'/>"
-              +"<br><label>v3 ["+appConfig.correct_v3+"]</label><input name='v3' value='"+d_volts_s3+"'/>"
-              +"<br><label>amps ["+appConfig.correct_amp+"]</label><input name='amps' value='"+d_amps+"'/>"
-              +"<input type='submit' name='wifi_set' value='wifi_set'/>"
-              +"<br><label>X</label><input name='x' value='"+message_x+"'/>"
-              +"<br><label>Y</label><input name='y' value='"+message_y+"'/>"
-              +"<br><label>size</label><input name='message_size' value='"+message_size+"'/><br>"
-              +"<br><label>font</label><input name='message_font' value='"+message_font+"'/><br>"
-              +"<br><label>text</label><input name='message_text' value='"+message_text+"'/>"
-              +"<br><input type='submit' name='clear' value='clear'/>"
-              +"<input type='submit' name='show' value='show'/><br><input type='submit'/></form>"
-              +"<br>DShow:"+String(set_display_show)+"<br>DClear:" + String(display_clear);
-    request->send(200, "text/html", message);
+    if (isnan(appConfig.correct_v0)) appConfig.correct_v0 = 1;
+    if (isnan(appConfig.correct_v1)) appConfig.correct_v1 = 1;
+    if (isnan(appConfig.correct_v2)) appConfig.correct_v2 = 1;
+    if (isnan(appConfig.correct_v3)) appConfig.correct_v3 = 1;
+    if (isnan(appConfig.correct_amp)) appConfig.correct_amp = 1;
 }
 
 String intToString(int counter){
@@ -242,6 +170,101 @@ void showDataOnDisplay() {
     }
 }
 
+void calculateDataToDisplay(){
+    if (isnan(appConfig.correct_amp)) appConfig.correct_amp = 1;
+    d_volts = volts0 * appConfig.correct_v0;
+    d_volts_s1 = volts1 * appConfig.correct_v1;
+    d_volts_s2 = volts2 * appConfig.correct_v2;
+    d_volts_s3 = volts3 * appConfig.correct_v3;
+    d_amps = (d_volts_s1 - d_volts) * 1000 * appConfig.correct_amp;// (amps_zero - volts3) * 1000 / 66;
+    if (isnan(d_amps)) d_amps = 0;
+    d_wats = d_amps * d_volts;
+}
+
+
+void requestNotFound(AsyncWebServerRequest *request) {
+    request->send(404, "text/plain", "Not found");
+}
+
+void requestGet(AsyncWebServerRequest *request) {
+    request->send(200, "text/html", "<form method=post><input type='submit'></form>");
+}
+
+void requestPost(AsyncWebServerRequest *request) {
+    if (request->hasParam("x", true)) {
+        message_x = request->getParam("x", true)->value();
+    }
+    if (request->hasParam("y", true)) {
+        message_y = request->getParam("y", true)->value();
+    }
+    if (request->hasParam("message_size", true)) {
+        message_size = request->getParam("message_size", true)->value();
+    }
+    if (request->hasParam("message_font", true)) {
+        message_font = request->getParam("message_font", true)->value();
+    }
+    if (request->hasParam("message_text", true)) {
+        message_text = request->getParam("message_text", true)->value();
+    }
+    if (request->hasParam("clear", true) && request->getParam("clear", true)->value()) {
+        set_display_clear = true;
+    }
+    if (request->hasParam("show", true) && request->getParam("show", true)->value()) {
+        set_display_show = true;
+    }
+    if (request->hasParam("wifi_set", true) && request->getParam("wifi_set", true)->value()) {
+        if (request->hasParam("wifi_ssid", true) && request->getParam("wifi_ssid", true)->value()) {
+            request->getParam("wifi_ssid", true)->value().toCharArray(appConfig.wifi_ssid,20);
+        }
+        if (request->hasParam("wifi_password", true) && request->getParam("wifi_password", true)->value()) {
+            request->getParam("wifi_password", true)->value().toCharArray(appConfig.wifi_password,20);
+        }
+        set_config = true;
+    }
+    if (request->hasParam("correct_set", true) && request->getParam("correct_set", true)->value()) {
+        if (request->hasParam("v0", true) && request->getParam("v0", true)->value()) {
+            float v0 = request->getParam("v0", true)->value().toFloat();
+            appConfig.correct_v0 = v0 / volts0;
+        }
+        if (request->hasParam("v1", true) && request->getParam("v1", true)->value()) {
+            float v1 = request->getParam("v1", true)->value().toFloat();
+            appConfig.correct_v1 = v1 / volts1;
+        }
+        if (request->hasParam("v2", true) && request->getParam("v2", true)->value()) {
+            float v2 = request->getParam("v2", true)->value().toFloat();
+            appConfig.correct_v2 = v2 / volts2;
+        }
+        if (request->hasParam("v3", true) && request->getParam("v3", true)->value()) {
+            float v3 = request->getParam("v3", true)->value().toFloat();
+            appConfig.correct_v3 = v3 / volts3;
+        }
+        if (request->hasParam("amps", true) && request->getParam("amps", true)->value()) {
+            float amps = request->getParam("amps", true)->value().toFloat();
+            appConfig.correct_amp = amps / d_amps;
+        }
+        calculateDataToDisplay();
+        set_config = true;
+    }
+    message = String("<form method=post><label>WIFI SSID</label><input name='wifi_ssid' value='")+appConfig.wifi_ssid+"'/>"
+              +"<br><label>WIFI SSID</label><input name='wifi_password' value='"+appConfig.wifi_password+"'/>"
+              +"<br><input type='submit' name='wifi_set' value='wifi_set'/>"
+              +"<br><label>v0 ["+appConfig.correct_v0+"]</label><input name='v0' value='"+d_volts+"'/>"
+              +"<br><label>v1 ["+appConfig.correct_v1+"]</label><input name='v1' value='"+d_volts_s1+"'/>"
+              +"<br><label>v2 ["+appConfig.correct_v2+"]</label><input name='v2' value='"+d_volts_s2+"'/>"
+              +"<br><label>v3 ["+appConfig.correct_v3+"]</label><input name='v3' value='"+d_volts_s3+"'/>"
+              +"<br><label>amps ["+appConfig.correct_amp+"]</label><input name='amps' value='"+d_amps+"'/>"
+              +"<br><input type='submit' name='correct_set' value='correct_set'/>"
+               +"<br><input type='submit' name='correct_refresh' value='correct_refresh'/>"
+              +"<br><label>X</label><input name='x' value='"+message_x+"'/>"
+              +"<br><label>Y</label><input name='y' value='"+message_y+"'/>"
+              +"<br><label>size</label><input name='message_size' value='"+message_size+"'/><br>"
+              +"<br><label>font</label><input name='message_font' value='"+message_font+"'/><br>"
+              +"<br><label>text</label><input name='message_text' value='"+message_text+"'/>"
+              +"<br><input type='submit' name='clear' value='clear'/>"
+              +"<input type='submit' name='show' value='show'/><br><input type='submit'/></form>"
+              +"<br>DShow:"+String(set_display_show)+"<br>DClear:" + String(set_display_clear);
+    request->send(200, "text/html", message);
+}
 void setup() {
     Serial.begin(9600);
     Serial.println(F("init battery_indicator"));
@@ -391,12 +414,7 @@ void loop() {
         appConfigSave();
     }
     // show data on display
-    d_volts = volts0 * appConfig.correct_v0;
-    d_volts_s1 = volts1 * appConfig.correct_v1;
-    d_volts_s2 = volts2 * appConfig.correct_v2;
-    d_volts_s3 = volts3 * appConfig.correct_v3;
-    d_amps = (d_volts_s1 - d_volts) * 100 * appConfig.correct_amp;// (amps_zero - volts3) * 1000 / 66;
-    d_wats = d_amps * d_volts;
+    calculateDataToDisplay();
     showDataOnDisplay();
     // Wait a second before the new measurement
     delay(1000);
