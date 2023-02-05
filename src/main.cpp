@@ -32,6 +32,7 @@ Ticker timer1;
 
 float d_volts, d_amps, d_wats, d_amp_hours, d_wat_hours, d_volts_s1,d_volts_s2,d_volts_s3;
 float volts0, volts1, volts2, volts3;
+int16_t adc0, adc1, adc2, adc3;
 uint32_t d_seconds;
 boolean isShowDataOnDisplay = true;
 
@@ -176,7 +177,7 @@ void calculateDataToDisplay(){
     d_volts_s1 = volts1 * appConfig.correct_v1;
     d_volts_s2 = volts2 * appConfig.correct_v2;
     d_volts_s3 = volts3 * appConfig.correct_v3;
-    d_amps = (d_volts_s1 - d_volts) * 1000 * appConfig.correct_amp;// (amps_zero - volts3) * 1000 / 66;
+    d_amps = (d_volts_s1 - d_volts) * 100 * appConfig.correct_amp;// (amps_zero - volts3) * 1000 / 66;
     if (isnan(d_amps)) d_amps = 0;
     d_wats = d_amps * d_volts;
 }
@@ -191,6 +192,11 @@ void requestGet(AsyncWebServerRequest *request) {
 }
 
 void requestPost(AsyncWebServerRequest *request) {
+    float l_volts0, l_volts1, l_volts2, l_volts3;
+    l_volts0 = volts0;
+    l_volts1 = volts1;
+    l_volts2 = volts2;
+    l_volts3 = volts3;
     if (request->hasParam("x", true)) {
         message_x = request->getParam("x", true)->value();
     }
@@ -224,19 +230,19 @@ void requestPost(AsyncWebServerRequest *request) {
     if (request->hasParam("correct_set", true) && request->getParam("correct_set", true)->value()) {
         if (request->hasParam("v0", true) && request->getParam("v0", true)->value()) {
             float v0 = request->getParam("v0", true)->value().toFloat();
-            appConfig.correct_v0 = v0 / volts0;
+            appConfig.correct_v0 = v0 / l_volts0;
         }
         if (request->hasParam("v1", true) && request->getParam("v1", true)->value()) {
             float v1 = request->getParam("v1", true)->value().toFloat();
-            appConfig.correct_v1 = v1 / volts1;
+            appConfig.correct_v1 = v1 / l_volts1;
         }
         if (request->hasParam("v2", true) && request->getParam("v2", true)->value()) {
             float v2 = request->getParam("v2", true)->value().toFloat();
-            appConfig.correct_v2 = v2 / volts2;
+            appConfig.correct_v2 = v2 / l_volts2;
         }
         if (request->hasParam("v3", true) && request->getParam("v3", true)->value()) {
             float v3 = request->getParam("v3", true)->value().toFloat();
-            appConfig.correct_v3 = v3 / volts3;
+            appConfig.correct_v3 = v3 / l_volts3;
         }
         if (request->hasParam("amps", true) && request->getParam("amps", true)->value()) {
             float amps = request->getParam("amps", true)->value().toFloat();
@@ -254,7 +260,7 @@ void requestPost(AsyncWebServerRequest *request) {
               +"<br><label>v3 ["+appConfig.correct_v3+"]</label><input name='v3' value='"+d_volts_s3+"'/>"
               +"<br><label>amps ["+appConfig.correct_amp+"]</label><input name='amps' value='"+d_amps+"'/>"
               +"<br><input type='submit' name='correct_set' value='correct_set'/>"
-               +"<br><input type='submit' name='correct_refresh' value='correct_refresh'/>"
+              +"<br><input type='submit' name='correct_refresh' value='correct_refresh'/>"
               +"<br><label>X</label><input name='x' value='"+message_x+"'/>"
               +"<br><label>Y</label><input name='y' value='"+message_y+"'/>"
               +"<br><label>size</label><input name='message_size' value='"+message_size+"'/><br>"
@@ -323,7 +329,7 @@ void setup() {
         server.on("/", HTTP_POST, [](AsyncWebServerRequest *request){requestPost(request);});
         server.onNotFound(requestNotFound);
         server.begin();
-        display.println("SoftAp" + WiFi.softAPIP().toString());
+        display.println("SoftAp " + WiFi.softAPIP().toString());
         display.display();
         Serial.println("SoftAp" + WiFi.softAPIP().toString());
         delay(10000);
@@ -338,7 +344,7 @@ void setup() {
         server.on("/", HTTP_POST, [](AsyncWebServerRequest *request){requestPost(request);});
         server.onNotFound(requestNotFound);
         server.begin();
-        //delay(3000);
+        delay(3000);
     }
 
 
@@ -346,7 +352,7 @@ void setup() {
     //                                                                -------  -------
     // ads.setGain(GAIN_TWOTHIRDS);  // 2/3x gain +/- 6.144V  1 bit = 3mV      0.1875mV (default)
      ads.setGain(GAIN_ONE);        // 1x gain   +/- 4.096V  1 bit = 2mV      0.125mV
-    // ads.setGain(GAIN_TWO);        // 2x gain   +/- 2.048V  1 bit = 1mV      0.0625mV
+//     ads.setGain(GAIN_TWO);        // 2x gain   +/- 2.048V  1 bit = 1mV      0.0625mV
     // ads.setGain(GAIN_FOUR);       // 4x gain   +/- 1.024V  1 bit = 0.5mV    0.03125mV
     // ads.setGain(GAIN_EIGHT);      // 8x gain   +/- 0.512V  1 bit = 0.25mV   0.015625mV
     // ads.setGain(GAIN_SIXTEEN);    // 16x gain  +/- 0.256V  1 bit = 0.125mV  0.0078125mV
@@ -371,8 +377,6 @@ void setup() {
 }
 
 void loop() {
-    int16_t adc0, adc1, adc2, adc3;
-
     adc0 = ads.readADC_SingleEnded(0);
     adc1 = ads.readADC_SingleEnded(1);
     adc2 = ads.readADC_SingleEnded(2);
@@ -384,11 +388,10 @@ void loop() {
     volts3 = ads.computeVolts(adc3);
 
     Serial.println("-----------------------------------------------------------");
-    Serial.print("AIN0: "); Serial.print(adc0); Serial.print("  "); Serial.print(volts0); Serial.println("V");
-    Serial.print("AIN1: "); Serial.print(adc1); Serial.print("  "); Serial.print(volts1); Serial.println("V");
-    Serial.print("AIN2: "); Serial.print(adc2); Serial.print("  "); Serial.print(volts2); Serial.println("V");
-    Serial.print("AIN3: "); Serial.print(adc3); Serial.print("  "); Serial.print(volts3); Serial.println("V");
-
+    Serial.println("AIN0: " + String(adc0) + "  " + String(volts0,4) + "V / " + String(d_volts,4)+"V");
+    Serial.println("AIN1: " + String(adc1) + "  " + String(volts1,4) + "V / " + String(d_volts_s1,4)+"V");
+    Serial.println("AIN2: " + String(adc2) + "  " + String(volts2,4) + "V / " + String(d_volts_s2,4)+"V");
+    Serial.println("AIN3: " + String(adc3) + "  " + String(volts3,4) + "V / " + String(d_volts_s3,4)+"V");
     // show message from WEB SERVER
     if (set_display_show){
         set_display_show = false;
